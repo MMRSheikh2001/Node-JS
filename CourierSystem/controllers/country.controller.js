@@ -1,5 +1,5 @@
 const Country = require("../models/country.model");
-const { toCountryRequestDTO, toCountryResponseDTO } = require("./dto/country.dto");
+const { toCountryRequestDTO, toCountryResponseDTO } = require("../dto/country.dto");
 
 exports.create = async (req, res) => {
     try {
