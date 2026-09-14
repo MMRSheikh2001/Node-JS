@@ -5,6 +5,9 @@ const cors = require('cors');
 const PORT = 3000;
 const { sequelize, ensureDatabaseExists } = require('./config/database');
 
+const countryRoutes = require('./routes/country.routes');
+
+
 
 
 app.use(cors());
@@ -13,7 +16,7 @@ app.use(express.urlencoded({ extended: true }));
 
 
 
-
+app.use('/api/country', countryRoutes)
 
 app.get('/', (req, res) => {
     res.send(`
