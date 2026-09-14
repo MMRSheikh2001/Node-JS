@@ -23,7 +23,7 @@ exports.create = async (req, res) => {
 
 exports.findAll = async (req, res) => {
     try {
-        const countries = Country.findAll();
+        const countries =await Country.findAll();
         return res.status(200).json(countries.map(toCountryResponseDTO));
 
 
@@ -64,7 +64,7 @@ exports.update = async (req, res) => {
             return res.status(404).json({ message: `Country with id ${id} not found.` });
         }
 
-        const updatedCountry = Country.findByPk(id);
+        const updatedCountry = await Country.findByPk(id);
         return res.status(200).json(toCountryResponseDTO(updatedCountry));
 
 
