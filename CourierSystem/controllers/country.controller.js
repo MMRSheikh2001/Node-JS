@@ -42,7 +42,7 @@ exports.findOne = async (req, res) => {
             return res.status(404).json({ message: `Country with id ${req.params.id} not found.` });
         }
 
-        return res.status(200).json(toCountryRequestDTO(country));
+        return res.status(200).json(toCountryResponseDTO(country));
 
 
     } catch (error) {

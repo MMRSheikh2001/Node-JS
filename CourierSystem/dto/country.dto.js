@@ -1,4 +1,4 @@
-const pickDefined = require('/utils/pickDefined');
+const pickDefined = require('./utils/pickDefined');
 
 const REQUEST_FIELDS = ['name', 'code', 'phoneCode', 'active'];
 
