@@ -7,6 +7,8 @@ const { sequelize, ensureDatabaseExists } = require('./config/database');
 
 const countryRoutes = require('./routes/country.routes');
 
+const divisionRoutes = require('./routes/division.routes');
+
 
 
 
@@ -17,6 +19,11 @@ app.use(express.urlencoded({ extended: true }));
 
 
 app.use('/api/country', countryRoutes)
+
+app.use('/api/division', divisionRoutes)
+
+
+
 
 app.get('/', (req, res) => {
     res.send(`
