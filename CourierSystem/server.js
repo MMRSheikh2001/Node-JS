@@ -9,6 +9,8 @@ const countryRoutes = require('./routes/country.routes');
 
 const divisionRoutes = require('./routes/division.routes');
 
+const districtRoutes = require('./routes/district.routes');
+
 
 
 
@@ -21,6 +23,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/country', countryRoutes)
 
 app.use('/api/division', divisionRoutes)
+app.use('/api/district', districtRoutes)
 
 
 
