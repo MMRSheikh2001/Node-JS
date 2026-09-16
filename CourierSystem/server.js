@@ -25,7 +25,7 @@ app.use('/api/country', countryRoutes)
 
 app.use('/api/division', divisionRoutes)
 app.use('/api/district', districtRoutes)
-app.use('/api/policeStation', policeStationRoutes)
+app.use('/api/police-station', policeStationRoutes)
 
 
 
