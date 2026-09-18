@@ -12,6 +12,8 @@ const divisionRoutes = require('./routes/division.routes');
 const districtRoutes = require('./routes/district.routes');
 const policeStationRoutes = require('./routes/police-station.routes');
 
+const userRoutes = require('./routes/user.routes');
+
 
 
 
@@ -26,6 +28,8 @@ app.use('/api/country', countryRoutes)
 app.use('/api/division', divisionRoutes)
 app.use('/api/district', districtRoutes)
 app.use('/api/police-station', policeStationRoutes)
+
+app.use('/api/user', userRoutes)
 
 
 
