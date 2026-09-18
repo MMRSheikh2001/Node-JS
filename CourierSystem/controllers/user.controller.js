@@ -1,5 +1,5 @@
 const bcrypt = require('bcryptjs');
-const User = require('../models/user.models');
+const User = require('../models/user.model');
 const { toUserRequestDTO, toUserResponseDTO } = require('../dto/user.dto');
 
 const VALID_ROLES = ['RIDER', 'CUSTOMER', 'AGENT', 'ADMIN'];
