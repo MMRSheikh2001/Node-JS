@@ -14,6 +14,8 @@ const policeStationRoutes = require('./routes/police-station.routes');
 
 const userRoutes = require('./routes/user.routes');
 
+const customerRoutes = require('./routes/customer.routes');
+
 
 
 
@@ -30,6 +32,8 @@ app.use('/api/district', districtRoutes)
 app.use('/api/police-station', policeStationRoutes)
 
 app.use('/api/user', userRoutes)
+
+app.use('/api/customer', customerRoutes)
 
 
 
