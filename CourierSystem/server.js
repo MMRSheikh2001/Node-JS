@@ -18,6 +18,8 @@ const customerRoutes = require('./routes/customer.routes');
 
 const agentRoutes = require('./routes/agent.routes');
 
+const riderRoutes = require('./routes/rider.routes');
+
 
 
 
@@ -41,6 +43,8 @@ app.use('/api/user', userRoutes)
 app.use('/api/customer', customerRoutes)
 
 app.use('/api/agent', agentRoutes)
+
+app.use('/api/rider', riderRoutes)
 
 
 
