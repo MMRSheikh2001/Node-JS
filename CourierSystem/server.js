@@ -20,6 +20,8 @@ const agentRoutes = require('./routes/agent.routes');
 
 const riderRoutes = require('./routes/rider.routes');
 
+const parcelRoutes = require('./routes/parcel.routes');
+
 
 
 
@@ -45,6 +47,8 @@ app.use('/api/customer', customerRoutes)
 app.use('/api/agent', agentRoutes)
 
 app.use('/api/rider', riderRoutes)
+
+app.use('/api/parcel', parcelRoutes)
 
 
 
