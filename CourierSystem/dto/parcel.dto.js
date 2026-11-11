@@ -17,6 +17,21 @@ function toParcelBookingRequestDTO(body) {
     return pickDefined(body, BOOKING_FIELDS);
 }
 
+// What an agent may send when booking at the hub counter. No customerId (the
+// sender is a walk-in); the agent is identified by agentId instead.
+const AGENT_BOOKING_FIELDS = [
+    'agentId',
+    'senderName', 'senderPhone', 'senderAddress', 'originPoliceStationId',
+    'receiverName', 'receiverPhone', 'receiverAddress', 'destinationPoliceStationId',
+    'parcelType', 'weight', 'description', 'specialInstructions',
+    'serviceType', 'priority',
+    'paymentMethod', 'codAmount'
+];
+
+function toAgentParcelBookingRequestDTO(body) {
+    return pickDefined(body, AGENT_BOOKING_FIELDS);
+}
+
 function toStatusUpdateRequestDTO(body) {
     return pickDefined(body, STATUS_UPDATE_FIELDS);
 }
@@ -119,4 +134,9 @@ function toParcelResponseDTO(parcel) {
     };
 }
 
-module.exports = { toParcelBookingRequestDTO, toStatusUpdateRequestDTO, toParcelResponseDTO };
+module.exports = {
+    toParcelBookingRequestDTO,
+    toAgentParcelBookingRequestDTO,
+    toStatusUpdateRequestDTO,
+    toParcelResponseDTO
+};

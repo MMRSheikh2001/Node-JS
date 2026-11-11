@@ -102,7 +102,7 @@ async function start() {
 
         // 3. Auto-create/update the "products" table to match the model
         //    Use { alter: true } during development so schema changes are applied automatically.
-        await sequelize.sync({ alter: true });
+       await sequelize.sync();
         console.log('Database tables synced (auto-created if missing).');
 
         app.listen(PORT, () => {

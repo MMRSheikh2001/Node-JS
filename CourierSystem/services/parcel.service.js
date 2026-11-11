@@ -1,3 +1,4 @@
+const { Op } = require('sequelize');
 const { sequelize } = require('../config/database');
 const User = require('../models/user.model');
 const PoliceStation = require('../models/police-station.model');
@@ -338,6 +339,15 @@ async function pickup(parcelId, { riderId: riderIdRaw, note, location }) {
     return getById(parcelId);
 }
 
+// Cash-on-delivery money is collected at the door, so a COD parcel that
+// reaches DELIVERED is automatically marked PAID. Shared by every status
+// update path (rider, admin, agent) so they can't disagree.
+function markCodPaidIfDelivered(parcel, newStatus, changes) {
+    if (newStatus === ParcelStatus.DELIVERED && parcel.paymentMethod === PaymentMethod.COD) {
+        changes.paymentStatus = PaymentStatus.PAID;
+    }
+}
+
 // Moves a parcel to any valid status and records it in the history.
 //  - With riderId (a rider doing the update): that rider must be the assigned
 //    one, and the parcel must not already be finished.
@@ -363,9 +373,7 @@ async function updateStatus(parcelId, dto) {
 
     const changes = { status: newStatus };
     if (hub) changes.currentHubId = hub.id;
-    if (newStatus === ParcelStatus.DELIVERED && parcel.paymentMethod === PaymentMethod.COD) {
-        changes.paymentStatus = PaymentStatus.PAID;
-    }
+    markCodPaidIfDelivered(parcel, newStatus, changes);
 
     await sequelize.transaction(async (t) => {
         await parcel.update(changes, { transaction: t });
@@ -374,6 +382,138 @@ async function updateStatus(parcelId, dto) {
             note: firstNonBlank(dto.note) || 'Status updated',
             location: firstNonBlank(dto.location) || (hub ? `${hub.name} Hub` : ''),
             performedByRiderId: riderId
+        });
+    });
+
+    return getById(parcelId);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Agent (hub staff) operations
+// ─────────────────────────────────────────────────────────────
+
+// Loads an agent with their user and hub. Reading a hub's parcels is fine for
+// any agent, but booking or changing parcels needs an active one.
+async function requireAgent(agentIdRaw, { mustBeActive = false } = {}) {
+    const agentId = parseId(agentIdRaw, 'agentId');
+    const agent = await Agent.findByPk(agentId, {
+        include: [{ model: User, as: 'user' }, { model: PoliceStation, as: 'hub' }]
+    });
+    if (!agent) throw notFound(`Agent not found with id: ${agentId}`);
+    if (mustBeActive && !agent.active) throw forbidden('Agent is not active');
+    return agent;
+}
+
+// A parcel "is at" a hub if it started there, is going there, or is there now.
+const isAtHub = (parcel, hubId) =>
+    [parcel.originPoliceStationId, parcel.destinationPoliceStationId, parcel.currentHubId].includes(hubId);
+
+// Walk-in booking at a hub counter. Unlike online booking there is no
+// customer account, so the sender's name and phone must be given.
+// The origin defaults to the agent's own hub.
+async function bookByAgent(data) {
+    const agent = await requireAgent(data.agentId, { mustBeActive: true });
+
+    const senderName = requireText(data.senderName, 'senderName');
+    const senderPhone = requireText(data.senderPhone, 'senderPhone');
+
+    const { fields, originStation } = await prepareParcelFields({
+        ...data,
+        originPoliceStationId: isMissing(data.originPoliceStationId) ? agent.hubId : data.originPoliceStationId
+    });
+
+    return saveNewParcel({
+        ...fields,
+        senderName,
+        senderPhone,
+        senderAddress: firstNonBlank(data.senderAddress) || '',
+        bookedByAgentId: agent.id,
+        bookingSource: BookingSource.AGENT
+    }, originStation, `Parcel booked at ${originStation.name} Hub by agent ${agent.user.name}`);
+}
+
+// Every parcel that touches the agent's hub, optionally filtered by status.
+// The same rule is used with and without the filter, so a parcel that is
+// sitting AT_HUB here doesn't disappear when the agent filters by status.
+async function getHubParcels(agentIdRaw, statusRaw) {
+    const agent = await requireAgent(agentIdRaw);
+    const status = isMissing(statusRaw) ? null : parseEnum(statusRaw, ParcelStatus, 'status');
+
+    const where = {
+        [Op.or]: [
+            { originPoliceStationId: agent.hubId },
+            { destinationPoliceStationId: agent.hubId },
+            { currentHubId: agent.hubId }
+        ]
+    };
+    if (status) where.status = status;
+
+    return Parcel.findAll({ where, include: PARCEL_INCLUDE, order: NEWEST_FIRST });
+}
+
+// An agent updates a parcel at their hub. Beyond setting the status it
+// fills in sensible defaults for the history entry:
+//  - IN_TRANSIT + nextHubPoliceStationId: records the hop and the next hub
+//  - AT_HUB: the parcel is now at this agent's hub
+//  - PICKED_UP / OUT_FOR_DELIVERY + riderId: assigns that rider
+//    (here riderId means "assign this rider", unlike the rider flow, where
+//    it means "the rider making the update")
+async function updateStatusByAgent(agentIdRaw, parcelId, dto) {
+    const newStatus = parseEnum(dto.status, ParcelStatus, 'status');
+    const agent = await requireAgent(agentIdRaw, { mustBeActive: true });
+    const parcel = await getById(parcelId);
+
+    if (!isAtHub(parcel, agent.hubId)) {
+        throw forbidden('This parcel is not at your hub');
+    }
+    if (TERMINAL_STATUSES.includes(parcel.status)) {
+        throw conflict(`Parcel is already ${parcel.status} and cannot be updated further`);
+    }
+
+    const hubName = agent.hub.name;
+    const changes = { status: newStatus };
+    let note = firstNonBlank(dto.note);
+    let location = firstNonBlank(dto.location);
+
+    if (newStatus === ParcelStatus.IN_TRANSIT && !isMissing(dto.nextHubPoliceStationId)) {
+        const nextHub = await requireStation(
+            parseId(dto.nextHubPoliceStationId, 'nextHubPoliceStationId'), 'Hub police station');
+        changes.currentHubId = nextHub.id;
+        note = note || `Dispatched from ${hubName} → ${nextHub.name}`;
+        location = location || hubName;
+    }
+
+    if (newStatus === ParcelStatus.AT_HUB) {
+        changes.currentHubId = agent.hubId;
+        note = note || `Arrived at ${hubName}`;
+        location = location || hubName;
+    }
+
+    const assignsRider = [ParcelStatus.PICKED_UP, ParcelStatus.OUT_FOR_DELIVERY].includes(newStatus)
+        && !isMissing(dto.riderId);
+    if (assignsRider) {
+        const riderId = parseId(dto.riderId, 'riderId');
+        const rider = await Rider.findByPk(riderId, { include: [{ model: User, as: 'user' }] });
+        if (!rider) throw notFound('Rider not found');
+        if (!rider.active) throw conflict('Rider is not active and cannot be assigned parcels');
+
+        changes.riderId = rider.id;
+        const vehicle = rider.vehicleType ? ` (${rider.vehicleType})` : '';
+        note = note || `Assigned to rider ${rider.user ? rider.user.name : rider.id}${vehicle}`;
+        location = location || hubName;
+    }
+
+    if (newStatus === ParcelStatus.DELIVERED) {
+        note = note || 'Delivered successfully';
+    }
+    markCodPaidIfDelivered(parcel, newStatus, changes);
+
+    await sequelize.transaction(async (t) => {
+        await parcel.update(changes, { transaction: t });
+        await addHistory(t, parcel.id, {
+            status: newStatus,
+            note: note || 'Status updated',
+            location: location || ''
         });
     });
 
@@ -399,5 +539,8 @@ module.exports = {
     assignRider,
     pickup,
     updateStatus,
+    bookByAgent,
+    getHubParcels,
+    updateStatusByAgent,
     remove
 };
