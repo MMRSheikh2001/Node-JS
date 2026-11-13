@@ -8,18 +8,15 @@ const { signToken } = require('../utils/jwt');
 const { HttpError, badRequest, forbidden } = require('../utils/httpError');
 
 const SALT_ROUNDS = 10;
-const MIN_PASSWORD_LENGTH = 6;
 
-// A real bcrypt hash of a throwaway string. When someone logs in with an
-// email that doesn't exist we still run bcrypt against this, so "unknown
-// email" takes as long as "wrong password" and an attacker can't use the
-// response time to discover which emails are registered.
+// A real bcrypt hash of a throwaway string. When someone logs in with an email
+// that doesn't exist we still run bcrypt against this, so "unknown email" takes
+// as long as "wrong password" and the response time can't reveal which emails exist.
 const DUMMY_HASH = bcrypt.hashSync('not-a-real-password', SALT_ROUNDS);
 
-// "Who is this user, in terms the rest of the app needs?" Besides the user
-// row it finds the profile id: a customer's Customer.id, a rider's Rider.id,
-// an agent's Agent.id (plus their hub). Controllers use profileId to check
-// "is this parcel/record really theirs?".
+// "Who is this user, in terms the rest of the app needs?" Besides the user row,
+// it finds the profile id: a customer's Customer.id, a rider's Rider.id, an
+// agent's Agent.id (plus their hub).
 async function getPrincipal(user) {
     const principal = {
         id: user.id,
@@ -60,9 +57,8 @@ async function login({ email, password }) {
 
     const user = await User.findOne({ where: { email: email.trim() } });
 
-    // Always compare, even when the user doesn't exist (see DUMMY_HASH), and
-    // use ONE message for both failures so the response never says which part
-    // was wrong.
+    // Always compare (see DUMMY_HASH) and use ONE message for both failures,
+    // so the response never says which part was wrong.
     const passwordMatches = await bcrypt.compare(password, user ? user.password : DUMMY_HASH);
     if (!user || !passwordMatches) {
         throw new HttpError(401, 'Invalid email or password.');
@@ -81,37 +77,14 @@ async function login({ email, password }) {
         email: principal.email,
         phone: principal.phone,
         role: principal.role,
-        profileId: principal.profileId ?? undefined, // Customer/Rider/Agent id, omitted for ADMIN
+        profileId: principal.profileId ?? undefined, // Customer/Rider/Agent id, left out for ADMIN
         hubId: principal.hubId ?? undefined,         // agents only
         hubName: principal.hubName ?? undefined      // agents only
     };
 }
 
-async function changePassword(userId, { currentPassword, newPassword }) {
-    if (typeof currentPassword !== 'string' || typeof newPassword !== 'string' || !currentPassword || !newPassword) {
-        throw badRequest('currentPassword and newPassword are required.');
-    }
-    if (newPassword.length < MIN_PASSWORD_LENGTH) {
-        throw badRequest(`newPassword must be at least ${MIN_PASSWORD_LENGTH} characters.`);
-    }
-
-    const user = await User.findByPk(userId);
-    if (!user || !(await bcrypt.compare(currentPassword, user.password))) {
-        // 400, not 401/403: the person IS logged in, so clients shouldn't treat
-        // this as "your session is invalid and you must log in again".
-        throw badRequest('Current password is incorrect.');
-    }
-    if (currentPassword === newPassword) {
-        throw badRequest('The new password must be different from the current one.');
-    }
-
-    await user.update({ password: await bcrypt.hash(newPassword, SALT_ROUNDS) });
-}
-
-// Creating the very first admin. Registering an admin through the API would
-// need an admin to already exist, so the first one comes from .env:
-// ADMIN_EMAIL + ADMIN_PASSWORD (optionally ADMIN_NAME, ADMIN_PHONE).
-// Does nothing once any admin exists.
+// Creates the very first admin from .env, because registering an admin through
+// the API would need an admin to already exist. Does nothing once any admin exists.
 async function seedAdmin() {
     if (await User.findOne({ where: { role: 'ADMIN' } })) return;
 
@@ -121,9 +94,8 @@ async function seedAdmin() {
         return;
     }
 
-    // A short value usually means .env cut the password off early: in a .env
-    // file an unquoted # starts a comment, so ADMIN_PASSWORD=Pass#123 is read
-    // as just "Pass". Refuse rather than create an admin with a weak password.
+    // A short value usually means .env cut the password off early: in a .env file
+    // an unquoted # starts a comment, so ADMIN_PASSWORD=Pass#123 is read as "Pass".
     if (ADMIN_PASSWORD.length < 8) {
         console.warn('ADMIN_PASSWORD must be at least 8 characters, so no admin was created. ' +
             'If your password contains a #, wrap it in quotes in .env, e.g. ADMIN_PASSWORD="Pass#1234".');
@@ -145,4 +117,4 @@ async function seedAdmin() {
     }
 }
 
-module.exports = { getPrincipal, login, changePassword, seedAdmin };
+module.exports = { getPrincipal, login, seedAdmin };

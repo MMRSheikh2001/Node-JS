@@ -22,6 +22,10 @@ const riderRoutes = require('./routes/rider.routes');
 
 const parcelRoutes = require('./routes/parcel.routes');
 
+const authRoutes = require('./routes/auth.routes');
+const { assertJwtConfigured } = require('./utils/jwt');
+const { seedAdmin } = require('./services/auth.service');
+
 
 
 
@@ -49,6 +53,8 @@ app.use('/api/agent', agentRoutes)
 app.use('/api/rider', riderRoutes)
 
 app.use('/api/parcel', parcelRoutes)
+
+app.use('/api/auth', authRoutes)
 
 
 
@@ -93,6 +99,7 @@ app.use((req, res) => {
 
 async function start() {
     try {
+        assertJwtConfigured(); // stop right away if JWT_SECRET is missing
         // 1. Make sure the MySQL database exists
         await ensureDatabaseExists();
 
@@ -103,6 +110,7 @@ async function start() {
         // 3. Auto-create/update the "products" table to match the model
         //    Use { alter: true } during development so schema changes are applied automatically.
        await sequelize.sync();
+       await seedAdmin(); // creates the first admin from .env if none exists
         console.log('Database tables synced (auto-created if missing).');
 
         app.listen(PORT, () => {
