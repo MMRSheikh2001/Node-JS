@@ -1,6 +1,7 @@
 const User = require('../models/user.model');
 const { verifyToken } = require('../utils/jwt');
-const { getPrincipal } = require('../services/auth.service');
+const { readToken } = require('../utils/cookies');
+const { getPrincipal, findActiveSession } = require('../services/auth.service');
 const { HttpError, forbidden, sendError } = require('../utils/httpError');
 
 // ──────────────────────────────────────────────────────────────
@@ -11,9 +12,9 @@ const { HttpError, forbidden, sendError } = require('../utils/httpError');
 // ──────────────────────────────────────────────────────────────
 async function authenticate(req, res, next) {
     try {
-        const [scheme, token] = (req.headers.authorization || '').split(' ');
-        if (!/^Bearer$/i.test(scheme) || !token) {
-            throw new HttpError(401, 'Login required. Send the header: Authorization: Bearer <token>');
+        const token = readToken(req); // the cookie, or an Authorization: Bearer header
+        if (!token) {
+            throw new HttpError(401, 'Login required.');
         }
 
         let payload;
@@ -25,6 +26,13 @@ async function authenticate(req, res, next) {
                 : 'Invalid token.');
         }
 
+        // The token must belong to a login that is still alive in the database.
+        // (Tokens made before sessions existed have no "jti", so they are rejected too.)
+        const session = payload.jti ? await findActiveSession(payload.jti, payload.sub) : null;
+        if (!session) {
+            throw new HttpError(401, 'Your session has ended. Please log in again.');
+        }
+
         // Look the user up on EVERY request instead of trusting the token alone.
         // That way a deleted or deactivated account stops working immediately,
         // not only when its token finally expires.
@@ -33,6 +41,7 @@ async function authenticate(req, res, next) {
         if (!user.active) throw forbidden('This account is deactivated.');
 
         req.user = await getPrincipal(user); // { id, role, profileId, hubId, ... }
+        req.user.sessionId = session.id;
         return next();
     } catch (error) {
         return sendError(res, error, 'Authentication error');

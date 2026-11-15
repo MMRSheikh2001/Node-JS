@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const app = express();
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const PORT = 3000;
 const { sequelize, ensureDatabaseExists } = require('./config/database');
 
@@ -23,15 +24,29 @@ const riderRoutes = require('./routes/rider.routes');
 const parcelRoutes = require('./routes/parcel.routes');
 
 const authRoutes = require('./routes/auth.routes');
+
+const { protect } = require('./middleware/auth');
+const { csrfGuard } = require('./middleware/csrf');
+
+
 const { assertJwtConfigured } = require('./utils/jwt');
 const { seedAdmin } = require('./services/auth.service');
 
 
 
 
-app.use(cors());
+// Which front-end addresses may talk to this API from a browser (comma separated in .env).
+const allowedOrigins = (process.env.CLIENT_ORIGINS || 'http://localhost:4200')
+    .split(',')
+    .map((origin) => origin.trim());
+
+// credentials: true lets the browser send and receive the login cookie.
+// (It only works with an explicit list of origins, never with the open "*".)
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());                  // fills req.cookies
+app.use(csrfGuard(allowedOrigins));       // blocks cross-site requests that carry the cookie
 
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -44,7 +59,7 @@ app.use('/api/division', divisionRoutes)
 app.use('/api/district', districtRoutes)
 app.use('/api/police-station', policeStationRoutes)
 
-app.use('/api/user', userRoutes)
+app.use('/api/user', protect('ADMIN'), userRoutes)   // raw user accounts: admin only
 
 app.use('/api/customer', customerRoutes)
 
@@ -109,8 +124,8 @@ async function start() {
 
         // 3. Auto-create/update the "products" table to match the model
         //    Use { alter: true } during development so schema changes are applied automatically.
-       await sequelize.sync();
-       await seedAdmin(); // creates the first admin from .env if none exists
+        await sequelize.sync();
+        await seedAdmin(); // creates the first admin from .env if none exists
         console.log('Database tables synced (auto-created if missing).');
 
         app.listen(PORT, () => {

@@ -1,10 +1,13 @@
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const { Op } = require('sequelize');
 const User = require('../models/user.model');
 const Customer = require('../models/customer.model');
 const Rider = require('../models/rider.model');
 const Agent = require('../models/agent.model');
 const PoliceStation = require('../models/police-station.model');
-const { signToken } = require('../utils/jwt');
+const AuthSession = require('../models/auth-session.model');
+const { signToken, getExpiry } = require('../utils/jwt');
 const { HttpError, badRequest, forbidden } = require('../utils/httpError');
 
 const SALT_ROUNDS = 10;
@@ -69,20 +72,48 @@ async function login({ email, password }) {
 
     const principal = await getPrincipal(user);
 
+    // One row per login. The token carries this row's id, so deleting the row
+    // (logout, password reset) ends that login even though the token hasn't expired.
+    const sessionId = crypto.randomUUID();
+    const token = signToken(user, sessionId);
+    const expiresAt = getExpiry(token);
+    await AuthSession.create({ id: sessionId, userId: user.id, expiresAt });
+
+    // Housekeeping: forget this user's logins that have already expired.
+    await AuthSession.destroy({ where: { userId: user.id, expiresAt: { [Op.lt]: new Date() } } });
+
     return {
-        token: signToken(user),
-        tokenType: 'Bearer',
-        userId: principal.id,
-        name: principal.name,
-        email: principal.email,
-        phone: principal.phone,
-        role: principal.role,
-        profileId: principal.profileId ?? undefined, // Customer/Rider/Agent id, left out for ADMIN
-        hubId: principal.hubId ?? undefined,         // agents only
-        hubName: principal.hubName ?? undefined      // agents only
+        token,      // goes into the cookie, NOT into the response body
+        expiresAt,
+        user: {
+            userId: principal.id,
+            name: principal.name,
+            email: principal.email,
+            phone: principal.phone,
+            role: principal.role,
+            profileId: principal.profileId ?? undefined, // Customer/Rider/Agent id, left out for ADMIN
+            hubId: principal.hubId ?? undefined,         // agents only
+            hubName: principal.hubName ?? undefined      // agents only
+        }
     };
 }
 
+// Ends ONE login (the "logout" button).
+async function logout(sessionId) {
+    await AuthSession.destroy({ where: { id: sessionId } });
+}
+
+// Is this login still alive? Checked on every request.
+async function findActiveSession(sessionId, userId) {
+    return AuthSession.findOne({
+        where: { id: sessionId, userId, expiresAt: { [Op.gt]: new Date() } }
+    });
+}
+
+// Ends EVERY login of a user (used when their password is reset).
+async function revokeAllSessions(userId) {
+    await AuthSession.destroy({ where: { userId } });
+}
 // Creates the very first admin from .env, because registering an admin through
 // the API would need an admin to already exist. Does nothing once any admin exists.
 async function seedAdmin() {
@@ -117,4 +148,4 @@ async function seedAdmin() {
     }
 }
 
-module.exports = { getPrincipal, login, seedAdmin };
+module.exports = { getPrincipal, login, logout, findActiveSession, revokeAllSessions, seedAdmin };
