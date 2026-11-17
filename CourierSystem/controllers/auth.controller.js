@@ -16,6 +16,31 @@ exports.login = async (req, res) => {
     }
 };
 
+// POST /api/auth/forgot-password   body: { email }
+// Always gives the same answer, whether or not the email is registered, so this
+// form can't be used to discover who has an account.
+exports.forgotPassword = async (req, res) => {
+    try {
+        await authService.requestPasswordReset((req.body || {}).email);
+        return res.status(200).json({ message: 'If that email is registered, a reset link has been sent.' });
+    } catch (error) {
+        return sendError(res, error, 'Error requesting a password reset');
+    }
+};
+
+// POST /api/auth/reset-password   body: { token, newPassword }
+// token = the long text from the emailed link. On success every login of this
+// person is ended; the browser's own cookie is cleared too, and they log in again.
+exports.resetPassword = async (req, res) => {
+    try {
+        await authService.resetPassword(req.body || {});
+        clearAuthCookie(res);
+        return res.status(200).json({ message: 'Your password has been reset. Please log in with the new one.' });
+    } catch (error) {
+        return sendError(res, error, 'Error resetting the password');
+    }
+};
+
 // POST /api/auth/logout
 // Deletes this login's session row (so the token is dead even if someone
 // copied it) and tells the browser to drop the cookie. Always answers 200,
